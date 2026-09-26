@@ -7,11 +7,13 @@ POWER_DOWN_MODE = {'Off':0, '1k':1, '100k':2, '500k':3}
 class MCP4725:
     bus_addresses = [0x60, 0x62]
     
-    def __init__(self,i2c, address=0x60) :
+    def __init__(self,i2c, address=0x60, start_value=0, debug=False) :
         self.i2c=i2c
         self.address=address
+        self.debug = debug
         self.scan()
         self._writeBuffer=bytearray(2)
+        self.write(start_value) # default start_value is zero
         
     def scan(self):
         i2cscan = self.i2c.scan()
@@ -23,6 +25,10 @@ class MCP4725:
             raise Exception("MCP4725 device not found on bus!")
             
     def write(self,value):
+        if isinstance(value, float):
+            if self.debug:
+                print(f"Value {value} converted to int ({int(value)})")
+            value = int(value)
         if value < 0:
             value=0
         value=value & 0xFFF
