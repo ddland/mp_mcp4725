@@ -28,7 +28,11 @@ if __name__ == "__main__":
     print("Should be 0.0129V on the out-pins!")
 ```
 
-If you want to check if the sensor is working you can connect the output to the Raspberry Pi Pico ADC. With the help of [threading](https://github.com/ddland/micropython/tree/main/tips/threading). As an example, to have continiuous readings from the ADC on the Raspberry Pi Pico while changing the MCP4725 DAC you can use adapt the following example:
+If you want to check if the sensor is working you can connect the output to the Raspberry Pi Pico ADC. 
+
+# Threading
+
+With the help of [threading](https://github.com/ddland/micropython/tree/main/tips/threading). As an example, to have continuous readings from the ADC on the Raspberry Pi Pico while changing the MCP4725 DAC you can use adapt the following example:
 
 ```python 
 import mcp4725
@@ -96,3 +100,61 @@ if __name__ == "__main__":
 
 Where the sensor class wraps the ADC in a new thread and lets it print every dt-delay the reading.
 
+## Base-class and threading
+
+With the baseclass for the sensor readings as provided in the [Threading tips section](https://github.com/ddland/micropython/tree/main/tips/threading) you can implement a measurement-loop with the internal ADC. 
+
+Writing your own `Sensor` class (inherited from the BaseSensor) you only have to write a few lines of code:
+
+```python
+import mcp4725
+import machine
+import time
+import basesensor
+
+class Sensor(basesensor.BaseSensor):
+ 
+    def __init__(self, ADC=0, dt=1):
+        super(Sensor, self).__init__()
+        """ Sensor class initializing
+
+        arguments: ADC: ADC number from the Pico Pi (0,1,2,3)
+                   dt: delay between prints from the ADC
+        """
+        self.dt = dt
+        self.adc = machine.ADC(ADC)
+                
+    def run(self):
+        self.running = True
+        while self.running:
+            print(3.3*self.adc.read_u16()/(2**16-1))
+            time.sleep(self.dt)
+            
+
+if __name__ == "__main__":
+    # mcp4725 device connected on Pin0 and 1 (else use different pin-numbers)
+    sda = machine.Pin(0)
+    scl = machine.Pin(1)
+    i2c = machine.I2C(0, sda=sda, scl=scl, freq=400000)
+    # the Adafruit Qwiic connecter has default address 0x62
+    mcp = mcp4725.MCP4725(i2c, address=0x62, debug=False)
+    
+    # start the ADC measurement on ADC=0 with a delay of 0.5 seconds per reading
+    sensor = Sensor(ADC=0, dt=0.5)
+    sensor.start()
+
+    # Go in 10 devisions trough the MCP4725 range
+    N = 10.0
+    step = (2**12-1)/N
+    
+    for ii in range(N+1):  #+1 to include the upper boundary
+        mcp.write(ii*step) #change the output to the next step-value
+        time.sleep(3)      # wait for 3 seconds to get some datavalues
+    mcp.write(0)           # return to zero...
+    sensor.stop()          # stop the sensor thread.
+    time.sleep(1)          # wait a second to let all the threads die...
+
+```
+
+In this code every `dt=0.5` seconds a readout from the ADC is printed in the terminal screen (on Thonny at least). Once the read-out thread is started a loop over the full range on the Raspberry Pi Pico with the MCP4725 is started (0-3.3V). 
+The readouts will change during the loop, according to the voltages the DAC is generating. Once the loop is finished the sensor-thread will stop.
